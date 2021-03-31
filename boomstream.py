@@ -34,6 +34,9 @@ class App():
         parser.add_argument('--pin', type=str, required=True)
         parser.add_argument('--use-cache', action='store_true', required=False)
         parser.add_argument('--resolution', type=str, required=False)
+        parser.add_argument('--filename', type=str, required=False)
+        parser.add_argument('--ffmpeg-options', type=str, required=False)
+        parser.add_argument('--referer', type=str, required=False)
         self.args = parser.parse_args()
 
     def get_token(self):
@@ -67,7 +70,7 @@ class App():
 
         with open('boomstream.config.json', 'wt') as f:
             del result["translations"]
-            f.write(json.dumps(result, ensure_ascii=False, indent=4))
+            f.write(json.dumps(result, ensure_ascii=False, indent=4).encode('utf-8'))
 
         return result
 
@@ -225,30 +228,45 @@ class App():
         print("Merging chunks...")
         os.system("cat %s/*.ts > %s.ts" % (key, key,))
         print("Encoding to MP4")
-        os.system('ffmpeg -i %s.ts -c copy "%s".mp4' % (key, self.get_title(),))
+	if self.args.filename is not None:
+		title = self.args.filename
+	else:
+		title = self.get_title().encode('utf-8')
+
+	if self.args.ffmpeg_options is not None:
+		options = self.args.ffmpeg_options
+	else:
+		options = ''
+
+	print('ffmpeg -i %s.ts -c copy %s "%s".mp4' % (key.encode('utf-8'), options, title,))
+        os.system('ffmpeg -i %s.ts -c copy %s "%s".mp4' % (key.encode('utf-8'), options, title,))
 
     def get_title(self):
         return self.config['entity']['title']
 
     def run(self):
+        if self.args.referer is not None:
+            headers['referer'] = self.args.referer
+
         if self.args.use_cache and os.path.exists('result.html'):
             page = open('result.html').read()
         else:
             r = requests.get(self.args.url, headers=headers)
 
             with open('result.html', 'wt') as f:
-                f.write(r.text)
+                f.write(r.text.encode('utf-8'))
 
             page = r.text
 
         self.config = self.get_boomstream_config(page)
-        if len(self.config['mediaData']['records']) == 0:
-            print("Video record is not available. Probably, the live streaming" \
-                  "has not finished yet. Please, try to download once the translation" \
-                  "is finished." \
-                  "If you're sure that translation is finished, please create and issue" \
-                  "in project github tracker and attach your boomstream.config.json file")
-            return 1
+
+        #if len(self.config['mediaData']['records']) == 0:
+        #    print("Video record is not available. Probably, the live streaming" \
+        #          "has not finished yet. Please, try to download once the translation" \
+        #          "is finished." \
+        #          "If you're sure that translation is finished, please create and issue" \
+        #          "in project github tracker and attach your boomstream.config.json file")
+        #    return 1
 
         self.token = self.get_token()
         self.m3u8_url = self.get_m3u8_url()
